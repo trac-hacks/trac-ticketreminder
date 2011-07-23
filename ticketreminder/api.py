@@ -268,14 +268,20 @@ class TicketReminder(Component):
         if 'ticket' not in data or not data['ticket'].id:
             return None
 
-        ticket_id = data['ticket'].id
-        li_tags = [tag.li(self._format_reminder(req, data['ticket'], *args)) for args in self._get_reminders(ticket_id)]
+        ticket = data['ticket']
+
+        if ticket['status'] == 'closed':
+            return None
+
+        li_tags = [tag.li(self._format_reminder(req, ticket, *args)) for args in self._get_reminders(ticket.id)]
         if li_tags:
             list_tags = tag.ul(li_tags, class_="reminders")
         else:
             list_tags = []
 
-        if not list_tags and 'TICKET_REMINDER_MODIFY' not in req.perm and 'TICKET_ADMIN' not in req.perm:
+        add_form = self._reminder_add_form(req)
+
+        if not list_tags and not add_form:
             return None
 
         return \
@@ -283,7 +289,7 @@ class TicketReminder(Component):
                 tag.h2("Reminders", class_="foldable"),
                 tag.div(
                     list_tags,
-                    self._reminder_add_form(req),
+                    add_form,
                 ),
                 id="reminders",
             )
