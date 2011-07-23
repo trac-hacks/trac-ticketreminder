@@ -3,6 +3,7 @@ import re
 from pkg_resources import resource_filename
 
 from trac.core import *
+from trac.attachment import AttachmentModule
 from trac.mimeview import Context
 from trac.db import DatabaseManager
 from trac.env import IEnvironmentSetupParticipant
@@ -13,6 +14,7 @@ from trac.util.datefmt import pretty_timedelta, to_datetime, format_date, get_da
 from trac.util.translation import _
 from trac.util import get_reporter_id
 from trac.ticket import Ticket
+from trac.perm import IPermissionRequestor, PermissionError
 from trac.resource import get_resource_url, get_resource_name
 
 from genshi.core import Markup
@@ -26,7 +28,7 @@ class TicketReminder(Component):
     With this component you can configure reminders for tickets in Trac.".
     """
 
-    implements(IEnvironmentSetupParticipant, ITemplateStreamFilter, ITemplateProvider, IRequestHandler, IRequestFilter, INavigationContributor)
+    implements(IEnvironmentSetupParticipant, ITemplateStreamFilter, ITemplateProvider, IRequestHandler, IRequestFilter, INavigationContributor, IPermissionRequestor)
 
     # IEnvironmentSetupParticipant methods
 
@@ -105,6 +107,10 @@ class TicketReminder(Component):
         id = int(req.args.get('id'))
 
         req.perm('ticket', id).require('TICKET_VIEW')
+
+        if 'TICKET_REMINDER_MODIFY' not in req.perm and 'TICKET_ADMIN' not in req.perm:
+            raise PermissionError('TICKET_REMINDER_MODIFY', req.perm._resource, self.env)
+
         ticket = Ticket(self.env, id)
 
         if 'cancel' in req.args:
@@ -207,7 +213,7 @@ class TicketReminder(Component):
 
         data = {
             'ticket': ticket,
-            'formatted_reminder': self._format_reminder(req, *reminder, delete_button=False),
+            'formatted_reminder': self._format_reminder(req, ticket, *reminder, delete_button=False),
         }
 
         return ("ticket_reminder_delete.html", data, None)
@@ -217,13 +223,20 @@ class TicketReminder(Component):
     def filter_stream(self, req, method, filename, stream, data):
         """Return a filtered Genshi event stream, or the original unfiltered stream if no match."""
 
-        if filename == "ticket.html":
-            attachments = Transformer('//div[@id="attachments"]')
-            trac_nav = Transformer('//form[@id="propertyform"]/div[@class="trac-nav"]')
+        if filename == "ticket.html" and ('TICKET_REMINDER_VIEW' in req.perm or 'TICKET_REMINDER_MODIFY' in req.perm or 'TICKET_ADMIN' in req.perm):
             tags = self._reminder_tags(req, data)
             if tags:
+                ticket_resource = data['ticket'].resource
+                context = Context.from_request(req, ticket_resource)
+                attachments_data = AttachmentModule(self.env).attachment_data(context)
+
                 add_stylesheet(req, 'ticketreminder/css/ticketreminder.css')
-                return stream | attachments.after(tags) | trac_nav.append(self._reminder_trac_nav(req, data))
+
+                # Will attachments section be displayed?
+                attachments_or_ticket = Transformer('//div[@id="attachments"]') if attachments_data['can_create'] or attachments_data['attachments'] else Transformer('//div[@id="ticket"]')
+                trac_nav = Transformer('//form[@id="propertyform"]/div[@class="trac-nav"]')
+
+                return stream | attachments_or_ticket.after(tags) | trac_nav.append(self._reminder_trac_nav(req, data))
 
         return stream
 
@@ -235,7 +248,7 @@ class TicketReminder(Component):
         for row in cursor:
             yield row
 
-    def _format_reminder(self, req, id, time, author, origin, description, delete_button=True):
+    def _format_reminder(self, req, ticket, id, time, author, origin, description, delete_button=True):
         now = to_datetime(None)
         time = to_datetime(time)
         if now >= time:
@@ -244,7 +257,7 @@ class TicketReminder(Component):
             when = tag("In ", tag.strong(pretty_timedelta(time)), " (", format_date(time), ")")
 
         if description:
-            context = Context.from_request(req)
+            context = Context.from_request(req, ticket.resource)
             desc = tag.div(format_to_oneliner(self.env, context, description), class_="description")
         else:
             desc = tag()
@@ -256,11 +269,14 @@ class TicketReminder(Component):
             return None
 
         ticket_id = data['ticket'].id
-        li_tags = [tag.li(self._format_reminder(req, *args)) for args in self._get_reminders(ticket_id)]
+        li_tags = [tag.li(self._format_reminder(req, data['ticket'], *args)) for args in self._get_reminders(ticket_id)]
         if li_tags:
             list_tags = tag.ul(li_tags, class_="reminders")
         else:
             list_tags = []
+
+        if not list_tags and 'TICKET_REMINDER_MODIFY' not in req.perm and 'TICKET_ADMIN' not in req.perm:
+            return None
 
         return \
             tag.div(
@@ -276,6 +292,9 @@ class TicketReminder(Component):
         return tag(Markup(' <a href="#reminders" title="Go to the list of reminders">Reminders</a> &uarr;'))
 
     def _reminder_add_form(self, req):
+        if 'TICKET_REMINDER_MODIFY' not in req.perm and 'TICKET_ADMIN' not in req.perm:
+            return None
+
         return \
             tag.form(
                 tag.div(
@@ -288,6 +307,9 @@ class TicketReminder(Component):
             )
 
     def _reminder_delete_form(self, req, reminder_id):
+        if 'TICKET_REMINDER_MODIFY' not in req.perm and 'TICKET_ADMIN' not in req.perm:
+            return None
+
         return \
             tag.form(
                 tag.div(
@@ -327,5 +349,13 @@ class TicketReminder(Component):
 
         return []
 
+    # IPermissionRequestor methods
+
+    def get_permission_actions(self):
+        """Return a list of actions defined by this component."""
+
+        yield 'TICKET_REMINDER_VIEW'
+        yield 'TICKET_REMINDER_MODIFY'
+    
 def clear_time(date):
     return date.replace(hour=0, minute=0, second=0, microsecond=0)
