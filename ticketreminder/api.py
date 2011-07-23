@@ -13,7 +13,7 @@ from trac.wiki import format_to_oneliner
 from trac.util.datefmt import pretty_timedelta, to_datetime, format_date, get_date_format_hint, format_datetime, parse_date, _time_intervals, to_utimestamp
 from trac.util.translation import _
 from trac.util import get_reporter_id
-from trac.ticket import Ticket
+from trac.ticket import Ticket, ITicketChangeListener
 from trac.perm import IPermissionRequestor, PermissionError
 from trac.resource import get_resource_url, get_resource_name
 
@@ -28,7 +28,7 @@ class TicketReminder(Component):
     With this component you can configure reminders for tickets in Trac.".
     """
 
-    implements(IEnvironmentSetupParticipant, ITemplateStreamFilter, ITemplateProvider, IRequestHandler, IRequestFilter, INavigationContributor, IPermissionRequestor)
+    implements(IEnvironmentSetupParticipant, ITemplateStreamFilter, ITemplateProvider, IRequestHandler, IRequestFilter, INavigationContributor, IPermissionRequestor, ITicketChangeListener)
 
     # IEnvironmentSetupParticipant methods
 
@@ -356,6 +356,26 @@ class TicketReminder(Component):
 
         yield 'TICKET_REMINDER_VIEW'
         yield 'TICKET_REMINDER_MODIFY'
-    
+
+    # ITicketChangeListener methods
+
+    def ticket_created(self, ticket):
+        """Called when a ticket is created."""
+
+        pass
+
+    def ticket_changed(self, ticket, comment, author, old_values):
+        """Called when a ticket is modified."""
+
+        pass
+
+    def ticket_deleted(self, ticket):
+        """Called when a ticket is deleted."""
+
+        db = self.env.get_db_cnx()
+        cursor = db.cursor()
+        cursor.execute("DELETE FROM ticketreminder WHERE ticket=%s", (ticket.id,))
+        db.commit() 
+
 def clear_time(date):
     return date.replace(hour=0, minute=0, second=0, microsecond=0)
