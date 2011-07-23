@@ -1,0 +1,51 @@
+#reminders > div, #formatted_reminder {
+	border: 1px outset #999966;
+	padding: 1em;
+}
+
+#reminders li {
+	clear: both;
+}
+
+#reminders .reminders {
+	list-style: square outside none;
+	margin-left: 2em;
+	padding: 0;
+}
+
+#reminders .description, #formatted_reminder .description {
+	font-style: italic;
+	padding: 0;
+	margin: 0;
+}
+
+#reminders .inlinebuttons {
+	float: right;
+	margin-left: 0.2em;
+}
+
+#reminder fieldset legend input {
+	vertical-align: baseline;
+}
+
+#reminder label {
+	padding-left: 0.2em;
+}
+
+#reminder fieldset {
+	margin-top: 1.3em;
+}
+
+#reminder fieldset .field {
+	float: left;
+	margin: 0 1em 0.5em 0;
+}
+
+#reminder .options {
+	float: left;
+	padding: 0 0 1em 1em;
+}
+
+#reminder br {
+	clear: left;
+}
