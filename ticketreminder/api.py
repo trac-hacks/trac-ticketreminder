@@ -3,6 +3,7 @@ import re
 from pkg_resources import resource_filename
 
 from trac.core import *
+from trac.admin import IAdminCommandProvider
 from trac.attachment import AttachmentModule
 from trac.mimeview import Context
 from trac.db import DatabaseManager
@@ -11,9 +12,11 @@ from trac.web import ITemplateStreamFilter, IRequestHandler, IRequestFilter
 from trac.web.chrome import ITemplateProvider, add_stylesheet, add_link, add_ctxtnav, INavigationContributor, add_warning, add_script, Chrome, add_notice
 from trac.wiki import format_to_oneliner
 from trac.util.datefmt import pretty_timedelta, to_datetime, format_date, get_date_format_hint, format_datetime, parse_date, _time_intervals, to_utimestamp
+from trac.util.text import exception_to_unicode
 from trac.util.translation import _
 from trac.util import get_reporter_id
 from trac.ticket import Ticket, ITicketChangeListener
+from trac.ticket.notification import TicketNotifyEmail
 from trac.perm import IPermissionRequestor, PermissionError
 from trac.resource import get_resource_url, get_resource_name
 
@@ -28,7 +31,7 @@ class TicketReminder(Component):
     With this component you can configure reminders for tickets in Trac.".
     """
 
-    implements(IEnvironmentSetupParticipant, ITemplateStreamFilter, ITemplateProvider, IRequestHandler, IRequestFilter, INavigationContributor, IPermissionRequestor, ITicketChangeListener)
+    implements(IEnvironmentSetupParticipant, ITemplateStreamFilter, ITemplateProvider, IRequestHandler, IRequestFilter, INavigationContributor, IPermissionRequestor, ITicketChangeListener, IAdminCommandProvider)
 
     # IEnvironmentSetupParticipant methods
 
@@ -263,6 +266,9 @@ class TicketReminder(Component):
             desc = tag()
 
         return tag(self._reminder_delete_form(req, id) if delete_button else None, when, " - added by ", tag.em(Chrome(self.env).authorinfo(req, author)), " ", tag.span(pretty_timedelta(origin), title=format_datetime(origin, req.session.get('datefmt', 'iso8601'), req.tz)), " ago.", desc)
+    
+    def _format_reminder_text(self, ticket, id, author, origin, description):
+        return "Ticket reminder added by %s %s ago (%s)%s" % (author, pretty_timedelta(origin), format_datetime(origin), ":\n%s" % (description,) if description else ".")
 
     def _reminder_tags(self, req, data):
         if 'ticket' not in data or not data['ticket'].id:
@@ -382,6 +388,57 @@ class TicketReminder(Component):
         cursor = db.cursor()
         cursor.execute("DELETE FROM ticketreminder WHERE ticket=%s", (ticket.id,))
         db.commit() 
+    
+    # IAdminCommandProvider methods
+
+    def get_admin_commands(self):
+        """Return a list of available admin commands."""
+
+        yield ('reminders', '', 'Check for any pending reminders and send them', None, self._do_check_and_send)
+
+    def _do_check_and_send(self):
+        db = self.env.get_db_cnx()
+        cursor = db.cursor()
+
+        now = to_utimestamp(to_datetime(None))
+
+        cursor.execute("SELECT id, ticket, author, origin, description FROM ticketreminder WHERE reminded=0 AND %s>=time", (now,))
+
+        for row in cursor:
+            self._do_send(*row)
+
+    def _do_send(self, id, ticket, author, origin, description):
+        try:
+            ticket = Ticket(self.env, ticket)
+
+            reminder = self._format_reminder_text(ticket, id, author, origin, description)
+
+            tn = TicketReminderNotifyEmail(self.env, reminder)
+            tn.notify(ticket)
+
+            db = self.env.get_db_cnx()
+            cursor = db.cursor()
+            cursor.execute("UPDATE ticketreminder SET reminded=1 WHERE id=%s", (id,))
+            db.commit()
+        except Exception, e:
+            print "Failure sending reminder notification for ticket #%s: %s" % (ticket.id, exception_to_unicode(e))
+
+class TicketReminderNotifyEmail(TicketNotifyEmail):
+    def __init__(self, env, reminder):
+        super(TicketReminderNotifyEmail, self).__init__(env)
+        self.reminder = reminder
+
+    def _notify(self, ticket, newticket=True, modtime=None):
+        description = ticket.values.get('description')
+        ticket.values['description'] = self.reminder
+        super(TicketReminderNotifyEmail, self)._notify(ticket, newticket, modtime)
+        ticket.values['description'] = description
+
+    def notify(self, ticket):
+        super(TicketReminderNotifyEmail, self).notify(ticket, newticket=True)
+
+    def format_subj(self, summary):
+        return super(TicketReminderNotifyEmail, self).format_subj("Ticket reminder")
 
 def clear_time(date):
     return date.replace(hour=0, minute=0, second=0, microsecond=0)
