@@ -28,7 +28,7 @@ import db_default
 
 class TicketReminder(Component):
     """
-    With this component you can configure reminders for tickets in Trac.".
+    With this component you can configure reminders for tickets in Trac.
     """
 
     implements(IEnvironmentSetupParticipant, ITemplateStreamFilter, ITemplateProvider, IRequestHandler, IRequestFilter, INavigationContributor, IPermissionRequestor, ITicketChangeListener, IAdminCommandProvider)
