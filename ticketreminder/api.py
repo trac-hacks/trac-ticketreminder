@@ -214,9 +214,14 @@ class TicketReminder(Component):
             add_notice(req, "Reminder has been deleted.")
             req.redirect(get_resource_url(self.env, ticket.resource, req.href) + "#reminders")
 
+        # Python 2.5 compatibility
+        kwargs = {
+            'delete_button': False,
+        }
+
         data = {
             'ticket': ticket,
-            'formatted_reminder': self._format_reminder(req, ticket, *reminder, delete_button=False),
+            'formatted_reminder': self._format_reminder(req, ticket, *reminder, **kwargs),
         }
 
         return ("ticket_reminder_delete.html", data, None)
