@@ -11,6 +11,7 @@ schema = [
         Column('author'),
         Column('origin', type='int64'),
         Column('reminded', type='int'),
+        Column('repeat', type='int'),
         Column('description'),
         Index(['ticket']),
         Index(['time'])],
