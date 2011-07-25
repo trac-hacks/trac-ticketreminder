@@ -411,13 +411,16 @@ class TicketReminder(Component):
         try:
             ticket = Ticket(self.env, ticket)
 
-            reminder = self._format_reminder_text(ticket, id, author, origin, description)
+            # We send reminder only for open tickets
+            if ticket['status'] != 'closed':
+                reminder = self._format_reminder_text(ticket, id, author, origin, description)
 
-            tn = TicketReminderNotifyEmail(self.env, reminder)
-            tn.notify(ticket)
+                tn = TicketReminderNotifyEmail(self.env, reminder)
+                tn.notify(ticket)
 
             db = self.env.get_db_cnx()
             cursor = db.cursor()
+            # We set flag anyway as even for closed tickets this notification would be obsolete if ticket would be reopened
             cursor.execute("UPDATE ticketreminder SET reminded=1 WHERE id=%s", (id,))
             db.commit()
         except Exception, e:
