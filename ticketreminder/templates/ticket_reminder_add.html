@@ -12,7 +12,7 @@
 
   <body>
     <div id="content" class="reminder">
-      <h1>Add Reminder to <a href="${url_of(ticket.resource)}">${name_of(ticket.resource)}</a></h1>
+      <h1>Add reminder on <a href="${url_of(ticket.resource)}">${name_of(ticket.resource)}</a></h1>
       <form id="reminder" method="post" enctype="multipart/form-data" action="">
         <fieldset>
           <legend><label><input type="radio" name="type" value="date" checked="${'checked' if req.args.get('type') == 'date' else None}" /> Specific Date</label></legend>
