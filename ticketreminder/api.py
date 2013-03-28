@@ -371,8 +371,7 @@ class TicketReminder(Component):
     def get_permission_actions(self):
         """Return a list of actions defined by this component."""
 
-        yield 'TICKET_REMINDER_VIEW'
-        yield 'TICKET_REMINDER_MODIFY'
+        return ['TICKET_REMINDER_VIEW', 'TICKET_REMINDER_MODIFY']
 
     # ITicketChangeListener methods
 
