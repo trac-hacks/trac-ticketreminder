@@ -54,7 +54,7 @@ class TicketReminder(Component):
             self.found_db_version = int(value[0])
             if self.found_db_version < db_default.version:
                 return True
-        
+
         return False
 
     def upgrade_environment(self, db):
@@ -159,7 +159,7 @@ class TicketReminder(Component):
         }
 
         return ("ticket_reminder_add.html", data, None)
-    
+
     def _validate_add(self, req):
         ty = req.args.get('type')
         if ty == 'interval':
@@ -176,7 +176,7 @@ class TicketReminder(Component):
                 add_warning(req, "Please select interval unit.")
                 return False
 
-        elif ty == 'date': 
+        elif ty == 'date':
             try:
                 time = clear_time(parse_date(req.args.get('date', '').strip()))
                 req.args['date'] = format_date(time)
@@ -271,7 +271,7 @@ class TicketReminder(Component):
             desc = tag()
 
         return tag(self._reminder_delete_form(req, id) if delete_button else None, when, " - added by ", tag.em(Chrome(self.env).authorinfo(req, author)), " ", tag.span(pretty_timedelta(origin), title=format_datetime(origin, req.session.get('datefmt', 'iso8601'), req.tz)), " ago.", desc)
-    
+
     def _format_reminder_text(self, ticket, id, author, origin, description):
         return "Ticket reminder added by %s %s ago (%s)%s" % (author, pretty_timedelta(origin), format_datetime(origin), ":\n%s" % (description,) if description else ".")
 
@@ -391,8 +391,8 @@ class TicketReminder(Component):
         db = self.env.get_db_cnx()
         cursor = db.cursor()
         cursor.execute("DELETE FROM ticketreminder WHERE ticket=%s", (ticket.id,))
-        db.commit() 
-    
+        db.commit()
+
     # IAdminCommandProvider methods
 
     def get_admin_commands(self):
