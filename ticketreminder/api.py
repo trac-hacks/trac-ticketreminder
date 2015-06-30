@@ -444,8 +444,8 @@ class TicketReminderNotifyEmail(TicketNotifyEmail):
     def notify(self, ticket):
         super(TicketReminderNotifyEmail, self).notify(ticket, newticket=True)
 
-    def format_subj(self, summary):
-        return super(TicketReminderNotifyEmail, self).format_subj("Ticket reminder")
+    def format_subj(self, summary, newticket=True):
+        return super(TicketReminderNotifyEmail, self).format_subj("Ticket reminder", newticket)
 
 def clear_time(date):
     return date.replace(hour=0, minute=0, second=0, microsecond=0)
