@@ -39,7 +39,8 @@ class TicketReminder(Component):
         """Called when a new Trac environment is created."""
 
         self.found_db_version = 0
-        self.upgrade_environment()
+        with self.env.db_transaction as db:
+            self.upgrade_environment(db)
 
     def environment_needs_upgrade(self, db):
         """Called when Trac checks whether the environment needs to be upgraded."""
@@ -57,23 +58,22 @@ class TicketReminder(Component):
 
         return False
 
-    def upgrade_environment(self):
+    def upgrade_environment(self, db):
         """Actually perform an environment upgrade."""
 
         connector, _ = DatabaseManager(self.env)._get_connector()
 
-        with self.env.db_transaction as db:
-            cursor = db.cursor()
-            for table in db_default.schema:
-                for stmt in connector.to_sql(table):
-                    cursor.execute(stmt)
+        cursor = db.cursor()
+        for table in db_default.schema:
+            for stmt in connector.to_sql(table):
+                cursor.execute(stmt)
 
-            if not self.found_db_version:
-                cursor.execute("INSERT INTO system (name, value) VALUES (%s, %s)", (db_default.name, db_default.version))
-            else:
-                cursor.execute("UPDATE system SET value=%s WHERE name=%s", (db_default.version, db_default.name))
+        if not self.found_db_version:
+            cursor.execute("INSERT INTO system (name, value) VALUES (%s, %s)", (db_default.name, db_default.version))
+        else:
+            cursor.execute("UPDATE system SET value=%s WHERE name=%s", (db_default.version, db_default.name))
 
-            db.commit()
+        db.commit()
 
         self.log.info('Upgraded %s schema version from %d to %d', db_default.name, self.found_db_version, db_default.version)
 
