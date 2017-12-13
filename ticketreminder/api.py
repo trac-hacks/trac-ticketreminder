@@ -26,12 +26,16 @@ from genshi.filters import Transformer
 
 import db_default
 
+
 class TicketReminder(Component):
     """
     With this component you can configure reminders for tickets in Trac.
     """
 
-    implements(IEnvironmentSetupParticipant, ITemplateStreamFilter, ITemplateProvider, IRequestHandler, IRequestFilter, INavigationContributor, IPermissionRequestor, ITicketChangeListener, IAdminCommandProvider)
+    implements(IEnvironmentSetupParticipant, ITemplateStreamFilter,
+               ITemplateProvider, IRequestHandler, IRequestFilter,
+               INavigationContributor, IPermissionRequestor,
+               ITicketChangeListener, IAdminCommandProvider)
 
     # IEnvironmentSetupParticipant methods
 
@@ -39,66 +43,67 @@ class TicketReminder(Component):
         """Called when a new Trac environment is created."""
 
         self.found_db_version = 0
-        self.upgrade_environment(self.env.get_db_cnx())
+        self.upgrade_environment()
 
-    def environment_needs_upgrade(self, db):
-        """Called when Trac checks whether the environment needs to be upgraded."""
-
-        cursor = db.cursor()
-        cursor.execute("SELECT value FROM system WHERE name=%s", (db_default.name,))
-        value = cursor.fetchone()
+    def environment_needs_upgrade(self, db=None):
+        """Called when Trac checks whether the environment needs to be
+        upgraded.
+        """
+        value = self.env.db_query("""
+            SELECT value FROM system WHERE name=%s
+            """, (db_default.name,))
         if not value:
             self.found_db_version = 0
             return True
         else:
-            self.found_db_version = int(value[0])
+            self.found_db_version = int(value[0][0])
             if self.found_db_version < db_default.version:
                 return True
 
         return False
 
-    def upgrade_environment(self, db):
+    def upgrade_environment(self, db=None):
         """Actually perform an environment upgrade."""
 
-        connector, _ = DatabaseManager(self.env)._get_connector()
+        connector = DatabaseManager(self.env).get_connector()[0]
 
-        cursor = db.cursor()
-        for table in db_default.schema:
-            for stmt in connector.to_sql(table):
-                cursor.execute(stmt)
+        with self.env.db_transaction as db:
+            for table in db_default.schema:
+                for stmt in connector.to_sql(table):
+                    db(stmt)
 
-        if not self.found_db_version:
-            cursor.execute("INSERT INTO system (name, value) VALUES (%s, %s)", (db_default.name, db_default.version))
-        else:
-            cursor.execute("UPDATE system SET value=%s WHERE name=%s", (db_default.version, db_default.name))
+            if not self.found_db_version:
+                db("""
+                    INSERT INTO system (name, value) VALUES (%s, %s)
+                    """, (db_default.name, db_default.version))
+            else:
+                db("""
+                    UPDATE system SET value=%s WHERE name=%s
+                    """, (db_default.version, db_default.name))
 
-        db.commit()
-
-        self.log.info('Upgraded %s schema version from %d to %d', db_default.name, self.found_db_version, db_default.version)
+        self.log.info('Upgraded %s schema version from %d to %d',
+                      db_default.name, self.found_db_version,
+                      db_default.version)
 
     # IRequestFilter methods
-    def pre_process_request(self, req, handler):
-        """Called after initial handler selection, and can be used to change
-        the selected handler or redirect request."""
 
+    def pre_process_request(self, req, handler):
         if self.match_request(req):
             return self
         else:
             return handler
 
     def post_process_request(req, template, data, content_type):
-        """Do any post-processing the request might need; typically adding
-        values to the template `data` dictionary, or changing template or
-        mime type."""
-
-        return (template, data, content_type)
+        return template, data, content_type
 
     # IRequestHandler methods
+
     def match_request(self, req):
         """Return whether the handler wants to process the given request."""
 
         match = re.match(r'/ticket/([0-9]+)$', req.path_info)
-        if match and req.args.get('action') in ["addreminder", "deletereminder"]:
+        if match and \
+                req.args.get('action') in ("addreminder", "deletereminder"):
             req.args['id'] = match.group(1)
             return True
 
@@ -111,8 +116,10 @@ class TicketReminder(Component):
 
         req.perm('ticket', id).require('TICKET_VIEW')
 
-        if 'TICKET_REMINDER_MODIFY' not in req.perm and 'TICKET_ADMIN' not in req.perm:
-            raise PermissionError('TICKET_REMINDER_MODIFY', req.perm._resource, self.env)
+        if 'TICKET_REMINDER_MODIFY' not in req.perm and \
+                'TICKET_ADMIN' not in req.perm:
+            raise PermissionError('TICKET_REMINDER_MODIFY',
+                                  req.perm._resource, self.env)
 
         ticket = Ticket(self.env, id)
 
@@ -122,7 +129,8 @@ class TicketReminder(Component):
         ticket_name = get_resource_name(self.env, ticket.resource)
         ticket_url = get_resource_url(self.env, ticket.resource, req.href)
         add_link(req, 'up', ticket_url, ticket_name)
-        add_ctxtnav(req, _('Back to %(ticket)s', ticket=ticket_name), ticket_url)
+        add_ctxtnav(req, _('Back to %(ticket)s', ticket=ticket_name),
+                    ticket_url)
 
         add_stylesheet(req, 'ticketreminder/css/ticketreminder.css')
 
@@ -143,10 +151,13 @@ class TicketReminder(Component):
             else:
                 time = to_utimestamp(parse_date(req.args.get('date')))
             origin = to_utimestamp(to_datetime(None))
-            db = self.env.get_db_cnx()
-            cursor = db.cursor()
-            cursor.execute("INSERT INTO ticketreminder (ticket, time, author, origin, reminded, description) VALUES (%s, %s, %s, %s, 0, %s)", (ticket.id, time, get_reporter_id(req, 'author'), origin, req.args.get('description')))
-            db.commit()
+
+            self.env.db_transaction("""
+                INSERT INTO ticketreminder
+                 (ticket, time, author, origin, reminded, description)
+                VALUES (%s, %s, %s, %s, 0, %s)
+                """, (ticket.id, time, get_reporter_id(req, 'author'),
+                      origin, req.args.get('description')))
 
             add_notice(req, "Reminder has been added.")
             req.redirect(get_resource_url(self.env, ticket.resource, req.href) + "#reminders")
@@ -162,6 +173,7 @@ class TicketReminder(Component):
 
     def _validate_add(self, req):
         ty = req.args.get('reminder_type')
+
         if ty == 'interval':
             try:
                 req.args['interval'] = int(req.args.get('interval', '').strip())
@@ -196,42 +208,46 @@ class TicketReminder(Component):
 
     def _process_delete(self, req, ticket):
         reminder_id = req.args.get('reminder')
+        redirect_url = get_resource_url(self.env, ticket.resource, req.href)
 
-        db = self.env.get_db_cnx()
-        cursor = db.cursor()
-
-        cursor.execute("SELECT id, time, author, origin, description FROM ticketreminder WHERE id=%s", (reminder_id,))
-        reminder = cursor.fetchone()
-
-        if not reminder:
-            add_warning(req, "Could not find reminder to delete.")
-            req.redirect(get_resource_url(self.env, ticket.resource, req.href))
+        with self.env.db_transaction as db:
+            for reminder in db("""
+                    SELECT id, time, author, origin, description
+                    FROM ticketreminder WHERE id=%s
+                    """, (reminder_id,)):
+                break
+            else:
+                add_warning(req, "Could not find reminder to delete.")
+                req.redirect(redirect_url)
+            if req.method == "POST":
+                db("""
+                    DELETE FROM ticketreminder WHERE id=%s
+                    """, (reminder_id,))
 
         if req.method == "POST":
-            cursor.execute("DELETE FROM ticketreminder WHERE id=%s", (reminder_id,))
-            db.commit()
-
             add_notice(req, "Reminder has been deleted.")
-            req.redirect(get_resource_url(self.env, ticket.resource, req.href) + "#reminders")
+            req.redirect(redirect_url + "#reminders")
 
-        # Python 2.5 compatibility
-        kwargs = {
-            'delete_button': False,
-        }
-
+        kwargs = {'delete_button': False}
         data = {
             'ticket': ticket,
-            'formatted_reminder': self._format_reminder(req, ticket, *reminder, **kwargs),
+            'formatted_reminder':
+                self._format_reminder(req, ticket, *reminder, **kwargs),
         }
 
-        return ("ticket_reminder_delete.html", data, None)
+        return "ticket_reminder_delete.html", data, None
 
     # ITemplateStreamFilter methods
 
     def filter_stream(self, req, method, filename, stream, data):
-        """Return a filtered Genshi event stream, or the original unfiltered stream if no match."""
+        """Return a filtered Genshi event stream, or the original unfiltered
+        stream if no match.
+        """
 
-        if filename == "ticket.html" and ('TICKET_REMINDER_VIEW' in req.perm or 'TICKET_REMINDER_MODIFY' in req.perm or 'TICKET_ADMIN' in req.perm):
+        if filename == "ticket.html" and \
+                ('TICKET_REMINDER_VIEW' in req.perm or
+                 'TICKET_REMINDER_MODIFY' in req.perm or
+                 'TICKET_ADMIN' in req.perm):
             tags = self._reminder_tags(req, data)
             if tags:
                 ticket_resource = data['ticket'].resource
@@ -249,11 +265,11 @@ class TicketReminder(Component):
         return stream
 
     def _get_reminders(self, ticket_id):
-        db = self.env.get_db_cnx()
-        cursor = db.cursor()
-
-        cursor.execute("SELECT id, time, author, origin, description FROM ticketreminder WHERE ticket=%s AND reminded=0 ORDER BY time", (ticket_id,))
-        for row in cursor:
+        for row in self.env.db_query("""
+            SELECT id, time, author, origin, description
+            FROM ticketreminder
+            WHERE ticket=%s AND reminded=0 ORDER BY time
+            """, (ticket_id,)):
             yield row
 
     def _format_reminder(self, req, ticket, id, time, author, origin, description, delete_button=True):
@@ -342,93 +358,68 @@ class TicketReminder(Component):
     # ITemplateProvider methods
 
     def get_htdocs_dirs(self):
-        """Return a list of directories with static resources (such as style
-        sheets, images, etc.)"""
-
-        yield ('ticketreminder', resource_filename(__name__, 'htdocs'))
+        yield 'ticketreminder', resource_filename(__name__, 'htdocs')
 
     def get_templates_dirs(self):
-        """Return a list of directories containing the provided template files."""
-
         yield resource_filename(__name__, 'templates')
 
     # INavigationContributor methods
 
     def get_active_navigation_item(self, req):
-        """It should return the name of the navigation item that should be highlighted as active/current."""
-
         return 'tickets'
 
     def get_navigation_items(self, req):
-        """Should return an iterable object over the list of navigation items to
-        add, each being a tuple in the form (category, name, text).
-        """
-
         return []
 
     # IPermissionRequestor methods
 
     def get_permission_actions(self):
-        """Return a list of actions defined by this component."""
-
         return ['TICKET_REMINDER_VIEW', 'TICKET_REMINDER_MODIFY']
 
     # ITicketChangeListener methods
 
     def ticket_created(self, ticket):
-        """Called when a ticket is created."""
-
         pass
 
     def ticket_changed(self, ticket, comment, author, old_values):
-        """Called when a ticket is modified."""
-
         pass
 
     def ticket_deleted(self, ticket):
-        """Called when a ticket is deleted."""
-
-        db = self.env.get_db_cnx()
-        cursor = db.cursor()
-        cursor.execute("DELETE FROM ticketreminder WHERE ticket=%s", (ticket.id,))
-        db.commit()
+        self.env.db_transaction("""
+            DELETE FROM ticketreminder WHERE ticket=%s
+            """, (ticket.id,))
 
     # IAdminCommandProvider methods
 
     def get_admin_commands(self):
-        """Return a list of available admin commands."""
-
         yield ('reminders', '', 'Check for any pending reminders and send them', None, self._do_check_and_send)
 
     def _do_check_and_send(self):
-        db = self.env.get_db_cnx()
-        cursor = db.cursor()
-
         now = to_utimestamp(to_datetime(None))
-
-        cursor.execute("SELECT id, ticket, author, origin, description FROM ticketreminder WHERE reminded=0 AND %s>=time", (now,))
-
-        for row in cursor:
+        for row in self.env.db_query("""
+                SELECT id, ticket, author, origin, description FROM ticketreminder WHERE reminded=0 AND %s>=time
+                    """, (now,)):
             self._do_send(*row)
 
     def _do_send(self, id, ticket, author, origin, description):
+        ticket = Ticket(self.env, ticket)
         try:
-            ticket = Ticket(self.env, ticket)
-
             # We send reminder only for open tickets
             if ticket['status'] != 'closed':
                 reminder = self._format_reminder_text(ticket, id, author, origin, description)
 
                 tn = TicketReminderNotifyEmail(self.env, reminder)
                 tn.notify(ticket)
-
-            db = self.env.get_db_cnx()
-            cursor = db.cursor()
-            # We set flag anyway as even for closed tickets this notification would be obsolete if ticket would be reopened
-            cursor.execute("UPDATE ticketreminder SET reminded=1 WHERE id=%s", (id,))
-            db.commit()
         except Exception, e:
+            self.env.log.error("Failure sending reminder notification for ticket #%s: %s", ticket.id, exception_to_unicode(e))
             print "Failure sending reminder notification for ticket #%s: %s" % (ticket.id, exception_to_unicode(e))
+        else:
+            # We set flag anyway as even for closed tickets this notification
+            # would be obsolete if ticket would be reopened
+            self.env.db_transaction("""
+                UPDATE ticketreminder SET reminded=1 WHERE id=%s
+                """, (id,))
+
 
 class TicketReminderNotifyEmail(TicketNotifyEmail):
     def __init__(self, env, reminder):
@@ -446,6 +437,7 @@ class TicketReminderNotifyEmail(TicketNotifyEmail):
 
     def format_subj(self, summary, newticket=True):
         return super(TicketReminderNotifyEmail, self).format_subj("Ticket reminder", newticket)
+
 
 def clear_time(date):
     return date.replace(hour=0, minute=0, second=0, microsecond=0)
