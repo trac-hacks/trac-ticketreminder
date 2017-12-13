@@ -39,7 +39,7 @@ class TicketReminder(Component):
         """Called when a new Trac environment is created."""
 
         self.found_db_version = 0
-        self.upgrade_environment(self.env.get_db_cnx())
+        self.upgrade_environment()
 
     def environment_needs_upgrade(self, db):
         """Called when Trac checks whether the environment needs to be upgraded."""
@@ -57,22 +57,23 @@ class TicketReminder(Component):
 
         return False
 
-    def upgrade_environment(self, db):
+    def upgrade_environment(self):
         """Actually perform an environment upgrade."""
 
         connector, _ = DatabaseManager(self.env)._get_connector()
 
-        cursor = db.cursor()
-        for table in db_default.schema:
-            for stmt in connector.to_sql(table):
-                cursor.execute(stmt)
+        with self.env.db_transaction as db:
+            cursor = db.cursor()
+            for table in db_default.schema:
+                for stmt in connector.to_sql(table):
+                    cursor.execute(stmt)
 
-        if not self.found_db_version:
-            cursor.execute("INSERT INTO system (name, value) VALUES (%s, %s)", (db_default.name, db_default.version))
-        else:
-            cursor.execute("UPDATE system SET value=%s WHERE name=%s", (db_default.version, db_default.name))
+            if not self.found_db_version:
+                cursor.execute("INSERT INTO system (name, value) VALUES (%s, %s)", (db_default.name, db_default.version))
+            else:
+                cursor.execute("UPDATE system SET value=%s WHERE name=%s", (db_default.version, db_default.name))
 
-        db.commit()
+            db.commit()
 
         self.log.info('Upgraded %s schema version from %d to %d', db_default.name, self.found_db_version, db_default.version)
 
@@ -143,10 +144,12 @@ class TicketReminder(Component):
             else:
                 time = to_utimestamp(parse_date(req.args.get('date')))
             origin = to_utimestamp(to_datetime(None))
-            db = self.env.get_db_cnx()
-            cursor = db.cursor()
-            cursor.execute("INSERT INTO ticketreminder (ticket, time, author, origin, reminded, description) VALUES (%s, %s, %s, %s, 0, %s)", (ticket.id, time, get_reporter_id(req, 'author'), origin, req.args.get('description')))
-            db.commit()
+
+            with self.env.db_transaction as db:
+                #db = self.env.get_db_cnx()
+                cursor = db.cursor()
+                cursor.execute("INSERT INTO ticketreminder (ticket, time, author, origin, reminded, description) VALUES (%s, %s, %s, %s, 0, %s)", (ticket.id, time, get_reporter_id(req, 'author'), origin, req.args.get('description')))
+                db.commit()
 
             add_notice(req, "Reminder has been added.")
             req.redirect(get_resource_url(self.env, ticket.resource, req.href) + "#reminders")
@@ -249,12 +252,13 @@ class TicketReminder(Component):
         return stream
 
     def _get_reminders(self, ticket_id):
-        db = self.env.get_db_cnx()
-        cursor = db.cursor()
+        with self.env.db_query as db:
+            #db = self.env.get_db_cnx()
+            cursor = db.cursor()
 
-        cursor.execute("SELECT id, time, author, origin, description FROM ticketreminder WHERE ticket=%s AND reminded=0 ORDER BY time", (ticket_id,))
-        for row in cursor:
-            yield row
+            cursor.execute("SELECT id, time, author, origin, description FROM ticketreminder WHERE ticket=%s AND reminded=0 ORDER BY time", (ticket_id,))
+            for row in cursor:
+                yield row
 
     def _format_reminder(self, req, ticket, id, time, author, origin, description, delete_button=True):
         now = to_datetime(None)
@@ -387,11 +391,11 @@ class TicketReminder(Component):
 
     def ticket_deleted(self, ticket):
         """Called when a ticket is deleted."""
-
-        db = self.env.get_db_cnx()
-        cursor = db.cursor()
-        cursor.execute("DELETE FROM ticketreminder WHERE ticket=%s", (ticket.id,))
-        db.commit()
+        with self.env.db_transaction as db:
+            #db = self.env.get_db_cnx()
+            cursor = db.cursor()
+            cursor.execute("DELETE FROM ticketreminder WHERE ticket=%s", (ticket.id,))
+            db.commit()
 
     # IAdminCommandProvider methods
 
@@ -401,15 +405,16 @@ class TicketReminder(Component):
         yield ('reminders', '', 'Check for any pending reminders and send them', None, self._do_check_and_send)
 
     def _do_check_and_send(self):
-        db = self.env.get_db_cnx()
-        cursor = db.cursor()
+        with self.env.db_query as db:
+            #db = self.env.get_db_cnx()
+            cursor = db.cursor()
 
-        now = to_utimestamp(to_datetime(None))
+            now = to_utimestamp(to_datetime(None))
 
-        cursor.execute("SELECT id, ticket, author, origin, description FROM ticketreminder WHERE reminded=0 AND %s>=time", (now,))
+            cursor.execute("SELECT id, ticket, author, origin, description FROM ticketreminder WHERE reminded=0 AND %s>=time", (now,))
 
-        for row in cursor:
-            self._do_send(*row)
+            for row in cursor:
+                self._do_send(*row)
 
     def _do_send(self, id, ticket, author, origin, description):
         try:
@@ -422,11 +427,12 @@ class TicketReminder(Component):
                 tn = TicketReminderNotifyEmail(self.env, reminder)
                 tn.notify(ticket)
 
-            db = self.env.get_db_cnx()
-            cursor = db.cursor()
-            # We set flag anyway as even for closed tickets this notification would be obsolete if ticket would be reopened
-            cursor.execute("UPDATE ticketreminder SET reminded=1 WHERE id=%s", (id,))
-            db.commit()
+            with self.env.db_transaction as db:
+                #db = self.env.get_db_cnx()
+                cursor = db.cursor()
+                # We set flag anyway as even for closed tickets this notification would be obsolete if ticket would be reopened
+                cursor.execute("UPDATE ticketreminder SET reminded=1 WHERE id=%s", (id,))
+                db.commit()
         except Exception, e:
             print "Failure sending reminder notification for ticket #%s: %s" % (ticket.id, exception_to_unicode(e))
 
