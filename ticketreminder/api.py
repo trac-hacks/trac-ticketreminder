@@ -135,7 +135,7 @@ class TicketReminder(Component):
 
     def _process_add(self, req, ticket):
         if req.method == "POST" and self._validate_add(req):
-            if req.args.get('type') == 'interval':
+            if req.args.get('reminder_type') == 'interval':
                 time = clear_time(to_datetime(None))
                 delta = _time_intervals[req.args.get('unit')](req.args.get('interval'))
                 time += delta
@@ -161,7 +161,7 @@ class TicketReminder(Component):
         return ("ticket_reminder_add.html", data, None)
 
     def _validate_add(self, req):
-        ty = req.args.get('type')
+        ty = req.args.get('reminder_type')
         if ty == 'interval':
             try:
                 req.args['interval'] = int(req.args.get('interval', '').strip())
