@@ -15,7 +15,7 @@
       <h1>Add reminder on <a href="${url_of(ticket.resource)}">${name_of(ticket.resource)}</a></h1>
       <form id="reminder" method="post" enctype="multipart/form-data" action="">
         <fieldset>
-          <legend><label><input type="radio" name="type" value="date" checked="${'checked' if req.args.get('type') == 'date' else None}" /> Specific Date</label></legend>
+          <legend><label><input type="radio" name="reminder_type" value="date" checked="${'checked' if req.args.get('reminder_type') == 'date' else None}" /> Specific Date</label></legend>
           <div class="field">
             On <input type="text" name="date" size="15" value="${req.args.get('date')}" />.
             <p class="hint">Enter date in ${date_hint} format.</p>
@@ -23,7 +23,7 @@
           <br />
         </fieldset>
         <fieldset>
-          <legend><label><input type="radio" name="type" value="interval" checked="${'checked' if req.args.get('type') == 'interval' else None}" /> Interval</label></legend>
+          <legend><label><input type="radio" name="reminder_type" value="interval" checked="${'checked' if req.args.get('reminder_type') == 'interval' else None}" /> Interval</label></legend>
           <div class="field">
             In <input type="text" name="interval" size="5" value="${req.args.get('interval')}" />
             <label><input type="radio" name="unit" value="day" checked="${'checked' if req.args.get('unit') == 'day' else None}" /> day(s)</label>

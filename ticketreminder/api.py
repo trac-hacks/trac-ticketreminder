@@ -39,7 +39,8 @@ class TicketReminder(Component):
         """Called when a new Trac environment is created."""
 
         self.found_db_version = 0
-        self.upgrade_environment(self.env.get_db_cnx())
+        with self.env.db_transaction as db:
+            self.upgrade_environment(db)
 
     def environment_needs_upgrade(self, db):
         """Called when Trac checks whether the environment needs to be upgraded."""
@@ -135,7 +136,7 @@ class TicketReminder(Component):
 
     def _process_add(self, req, ticket):
         if req.method == "POST" and self._validate_add(req):
-            if req.args.get('type') == 'interval':
+            if req.args.get('reminder_type') == 'interval':
                 time = clear_time(to_datetime(None))
                 delta = _time_intervals[req.args.get('unit')](req.args.get('interval'))
                 time += delta
@@ -143,10 +144,11 @@ class TicketReminder(Component):
             else:
                 time = to_utimestamp(parse_date(req.args.get('date')))
             origin = to_utimestamp(to_datetime(None))
-            db = self.env.get_db_cnx()
-            cursor = db.cursor()
-            cursor.execute("INSERT INTO ticketreminder (ticket, time, author, origin, reminded, description) VALUES (%s, %s, %s, %s, 0, %s)", (ticket.id, time, get_reporter_id(req, 'author'), origin, req.args.get('description')))
-            db.commit()
+
+            self.env.db_transaction("""
+            INSERT INTO ticketreminder (ticket, time, author, origin, reminded, description)
+            VALUES (%s, %s, %s, %s, 0, %s)
+            """, (ticket.id, time, get_reporter_id(req, 'author'), origin, req.args.get('description')))
 
             add_notice(req, "Reminder has been added.")
             req.redirect(get_resource_url(self.env, ticket.resource, req.href) + "#reminders")
@@ -161,7 +163,8 @@ class TicketReminder(Component):
         return ("ticket_reminder_add.html", data, None)
 
     def _validate_add(self, req):
-        ty = req.args.get('type')
+        ty = req.args.get('reminder_type')
+
         if ty == 'interval':
             try:
                 req.args['interval'] = int(req.args.get('interval', '').strip())
@@ -249,11 +252,11 @@ class TicketReminder(Component):
         return stream
 
     def _get_reminders(self, ticket_id):
-        db = self.env.get_db_cnx()
-        cursor = db.cursor()
-
-        cursor.execute("SELECT id, time, author, origin, description FROM ticketreminder WHERE ticket=%s AND reminded=0 ORDER BY time", (ticket_id,))
-        for row in cursor:
+        for row in self.env.db_query("""
+            SELECT id, time, author, origin, description
+            FROM ticketreminder
+            WHERE ticket=%s AND reminded=0 ORDER BY time
+            """, (ticket_id,)):
             yield row
 
     def _format_reminder(self, req, ticket, id, time, author, origin, description, delete_button=True):
@@ -387,11 +390,9 @@ class TicketReminder(Component):
 
     def ticket_deleted(self, ticket):
         """Called when a ticket is deleted."""
-
-        db = self.env.get_db_cnx()
-        cursor = db.cursor()
-        cursor.execute("DELETE FROM ticketreminder WHERE ticket=%s", (ticket.id,))
-        db.commit()
+        self.env.db_transaction("""
+            DELETE FROM ticketreminder WHERE ticket=%s
+            """, (ticket.id,))
 
     # IAdminCommandProvider methods
 
@@ -401,14 +402,10 @@ class TicketReminder(Component):
         yield ('reminders', '', 'Check for any pending reminders and send them', None, self._do_check_and_send)
 
     def _do_check_and_send(self):
-        db = self.env.get_db_cnx()
-        cursor = db.cursor()
-
         now = to_utimestamp(to_datetime(None))
-
-        cursor.execute("SELECT id, ticket, author, origin, description FROM ticketreminder WHERE reminded=0 AND %s>=time", (now,))
-
-        for row in cursor:
+        for row in self.env.db_query("""
+                SELECT id, ticket, author, origin, description FROM ticketreminder WHERE reminded=0 AND %s>=time
+                    """, (now,)):
             self._do_send(*row)
 
     def _do_send(self, id, ticket, author, origin, description):
@@ -422,12 +419,13 @@ class TicketReminder(Component):
                 tn = TicketReminderNotifyEmail(self.env, reminder)
                 tn.notify(ticket)
 
-            db = self.env.get_db_cnx()
-            cursor = db.cursor()
             # We set flag anyway as even for closed tickets this notification would be obsolete if ticket would be reopened
-            cursor.execute("UPDATE ticketreminder SET reminded=1 WHERE id=%s", (id,))
-            db.commit()
+            self.env.db_transaction("""
+                UPDATE ticketreminder SET reminded=1 WHERE id=%s
+                """, (id,))
+
         except Exception, e:
+            self.env.log.error("Failure sending reminder notification for ticket #%s: %s", ticket.id, exception_to_unicode(e))
             print "Failure sending reminder notification for ticket #%s: %s" % (ticket.id, exception_to_unicode(e))
 
 class TicketReminderNotifyEmail(TicketNotifyEmail):
