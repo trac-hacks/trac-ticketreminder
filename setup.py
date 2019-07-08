@@ -9,7 +9,7 @@ setup(
     description = "Allows to configure reminders for tickets in Trac.",
     author = 'Mitar',
     author_email = 'mitar.trac@tnode.com',
-    url = 'http://mitar.tnode.com/',
+    url = 'https://github.com/trac-hacks/trac-ticketreminder',
     keywords = 'trac plugin',
     license = "AGPLv3",
     packages = [PACKAGE],
