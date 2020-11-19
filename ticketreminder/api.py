@@ -16,7 +16,8 @@ from trac.util.text import exception_to_unicode
 from trac.util.translation import _
 from trac.util import get_reporter_id
 from trac.ticket import Ticket, ITicketChangeListener
-from trac.ticket.notification import TicketNotifyEmail
+#from trac.ticket.notification import TicketNotifyEmail
+from trac.notification.api import NotificationEvent, NotificationSystem
 from trac.perm import IPermissionRequestor, PermissionError
 from trac.resource import get_resource_url, get_resource_name
 
@@ -408,8 +409,10 @@ class TicketReminder(Component):
             if ticket['status'] != 'closed':
                 reminder = self._format_reminder_text(ticket, id, author, origin, description)
 
-                tn = TicketReminderNotifyEmail(self.env, reminder)
-                tn.notify(ticket)
+                #tn = TicketReminderNotifyEmail(self.env, reminder)
+                #tn.notify(ticket)
+                event = TicketReminderEvent(ticket, ticket['time'], author, reminder)
+                tn = NotificationSystem(self.env).notify(event)
         except Exception, e:
             self.env.log.error("Failure sending reminder notification for ticket #%s: %s", ticket.id, exception_to_unicode(e))
             print "Failure sending reminder notification for ticket #%s: %s" % (ticket.id, exception_to_unicode(e))
@@ -421,22 +424,32 @@ class TicketReminder(Component):
                 """, (id,))
 
 
-class TicketReminderNotifyEmail(TicketNotifyEmail):
-    def __init__(self, env, reminder):
-        super(TicketReminderNotifyEmail, self).__init__(env)
-        self.reminder = reminder
+#class TicketReminderNotifyEmail(TicketNotifyEmail):
+#    def __init__(self, env, reminder):
+#        super(TicketReminderNotifyEmail, self).__init__(env)
+#        self.reminder = reminder
+#
+#    def _notify(self, ticket, newticket=True, modtime=None):
+#        description = ticket.values.get('description')
+#        ticket.values['description'] = self.reminder
+#        super(TicketReminderNotifyEmail, self)._notify(ticket, newticket, modtime)
+#        ticket.values['description'] = description
+#
+#    def notify(self, ticket):
+#        super(TicketReminderNotifyEmail, self).notify(ticket, newticket=True)
+#
+#    def format_subj(self, summary, newticket=True):
+#        return super(TicketReminderNotifyEmail, self).format_subj("Ticket reminder", newticket)
 
-    def _notify(self, ticket, newticket=True, modtime=None):
-        description = ticket.values.get('description')
-        ticket.values['description'] = self.reminder
-        super(TicketReminderNotifyEmail, self)._notify(ticket, newticket, modtime)
-        ticket.values['description'] = description
+class TicketReminderEvent(NotificationEvent):
+    """Represent a ticket reminder `NotificationEvent`."""
 
-    def notify(self, ticket):
-        super(TicketReminderNotifyEmail, self).notify(ticket, newticket=True)
-
-    def format_subj(self, summary, newticket=True):
-        return super(TicketReminderNotifyEmail, self).format_subj("Ticket reminder", newticket)
+    def __init__(self, target, time, author, comment=None):
+        
+        super(TicketChangeEvent, self).__init__('ticket', 'reminder', target,
+	                                                time, author)
+        self.comment = comment
+        self.changes = {}
 
 
 def clear_time(date):
