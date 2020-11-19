@@ -5,7 +5,7 @@ from pkg_resources import resource_filename
 from trac.core import *
 from trac.admin import IAdminCommandProvider
 from trac.attachment import AttachmentModule
-from trac.mimeview import RenderingContext
+#from trac.mimeview import RenderingContext
 from trac.db import DatabaseManager
 from trac.env import IEnvironmentSetupParticipant
 from trac.web import ITemplateStreamFilter, IRequestHandler, IRequestFilter
@@ -24,6 +24,8 @@ from trac.resource import get_resource_url, get_resource_name
 from genshi.core import Markup
 from genshi.builder import tag
 from genshi.filters import Transformer
+
+from trac.web.chrome import web_context
 
 import db_default
 
@@ -252,7 +254,7 @@ class TicketReminder(Component):
             tags = self._reminder_tags(req, data)
             if tags:
                 ticket_resource = data['ticket'].resource
-                context = RenderingContext.from_request(req, ticket_resource)
+                context = web_context(req, ticket_resource)
                 attachments_data = AttachmentModule(self.env).attachment_data(context)
 
                 add_stylesheet(req, 'ticketreminder/css/ticketreminder.css')
@@ -282,7 +284,7 @@ class TicketReminder(Component):
             when = tag("In ", tag.strong(pretty_timedelta(time)), " (", format_date(time), ")")
 
         if description:
-            context = RenderingContext.from_request(req, ticket.resource)
+            context = web_context(req, ticket.resource)
             desc = tag.div(format_to_oneliner(self.env, context, description), class_="description")
         else:
             desc = tag()
