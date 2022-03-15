@@ -424,7 +424,7 @@ class TicketReminder(Component):
             if ticket['status'] != 'closed':
                 reminder = self._format_reminder_text(ticket, id, author, origin, description)
                 now = datetime_now(utc)
-                event = TicketReminderEvent('reminder', ticket, now, ticket['reporter'], reminder)
+                event = TicketReminderEvent('reminder', ticket, now, author, reminder)
                 notifier = NotificationSystem(self.env)
                 notifier.notify(event)
         except Exception, e:
@@ -863,6 +863,28 @@ class TicketReminder(Component):
         set_header(message, 'Subject', subject, charset)
         set_header(message, 'Message-ID', msgid, charset)
 
+
+
+class TicketReminderTicketReminderAuthorSubscriber(Component):
+    """Allows ticket reminder creators to subscribe to reminders they created."""
+
+    implements(INotificationSubscriber)
+
+    def matches(self, event):
+        authors = None
+        if (event.realm == 'ticketreminder') and ('reminder' in event.category):
+            authors = [event.author]
+        return _ticket_reminder_subscribers(self, authors)
+
+    def description(self):
+        return "A ticket for which I created a reminder has the reminder"
+
+    def default_subscriptions(self):
+        klass = self.__class__.__name__
+        return NotificationSystem(self.env).default_subscriptions(klass)
+
+    def requires_authentication(self):
+        return True
 
 
 class TicketReminderTicketOwnerSubscriber(Component):
