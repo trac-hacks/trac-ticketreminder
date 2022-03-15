@@ -877,7 +877,7 @@ class TicketReminderTicketReminderAuthorSubscriber(Component):
         return _ticket_reminder_subscribers(self, authors)
 
     def description(self):
-        return "A ticket for which I created a reminder has the reminder"
+        return "Ticket for which I created a reminder has the reminder"
 
     def default_subscriptions(self):
         klass = self.__class__.__name__
