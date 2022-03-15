@@ -1,19 +1,22 @@
-<!DOCTYPE html
-    PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
-    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:py="http://genshi.edgewall.org/"
-      xmlns:xi="http://www.w3.org/2001/XInclude"
-      xmlns:i18n="http://genshi.edgewall.org/i18n">
-  <xi:include href="layout.html" />
+# extends 'layout.html'
+<!DOCTYPE html>
+<html>
   <head>
-    <title>${name_of(ticket.resource)} &ndash; Add Reminder</title>
+    # block title
+    ${name_of(ticket.resource)} &ndash; Add Reminder
+    # endblock title
+
+    # block head
+    ${ super() }
+    # endblock head
   </head>
 
   <body>
     <div id="content" class="reminder">
+    # block content
       <h1>Add reminder on <a href="${url_of(ticket.resource)}">${name_of(ticket.resource)}</a></h1>
       <form id="reminder" method="post" enctype="multipart/form-data" action="">
+        ${jmacros.form_token_input()}
         <fieldset>
           <legend><label><input type="radio" name="reminder_type" value="date" checked="${'checked' if req.args.get('reminder_type') == 'date' else None}" /> Specific Date</label></legend>
           <div class="field">
@@ -35,13 +38,13 @@
         </fieldset>
         <fieldset>
           <legend>Reminder Info</legend>
-          <py:if test="authname == 'anonymous'">
+          # if authname == 'anonymous'
             <div class="field">
               <label>Your email or username:<br />
                 <input type="text" name="author" size="30" value="${req.args.get('author', author)}" />
               </label>
             </div>
-            </py:if>
+          # endif
           <div class="field">
             <label>Description of the reminder (optional):<br />
               <input type="text" name="description" size="60" value="${req.args.get('description')}" /></label>
@@ -55,5 +58,7 @@
         </div>
       </form>
     </div>
+    ${ super() }
+    # endblock content
   </body>
 </html>

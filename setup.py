@@ -1,6 +1,8 @@
+#!/usr/bin/env python
+
 from setuptools import setup
 
-VERSION = '0.2.1'
+VERSION = '0.2.2'
 PACKAGE = 'ticketreminder'
 
 setup(
