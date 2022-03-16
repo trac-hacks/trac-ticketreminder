@@ -205,6 +205,7 @@ class TicketReminder(Component):
             add_notice(req, "Reminder has been added.")
             req.redirect(get_resource_url(self.env, ticket.resource, req.href) + "#reminders")
 
+        Chrome(self.env).add_jquery_ui(req)
         add_script(req, 'ticketreminder/js/ticketreminder.js')
 
         data = {
