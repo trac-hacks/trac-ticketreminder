@@ -56,7 +56,7 @@ if Locale:
 else:
     _parse_locale = lambda lang: None
 
-import db_default
+import ticketreminder.db_default as db_default
 
 
 class TicketReminder(Component):
@@ -428,9 +428,9 @@ class TicketReminder(Component):
                 event = TicketReminderEvent('reminder', ticket, now, author, reminder)
                 notifier = NotificationSystem(self.env)
                 notifier.notify(event)
-        except Exception, e:
+        except Exception as e:
             self.env.log.error("Failure sending reminder notification for ticket #%s: %s", ticket.id, exception_to_unicode(e))
-            print "Failure sending reminder notification for ticket #%s: %s" % (ticket.id, exception_to_unicode(e))
+            print("Failure sending reminder notification for ticket #%s: %s" % (ticket.id, exception_to_unicode(e)))
         else:
             # We set flag anyway as even for closed tickets this notification
             # would be obsolete if ticket would be reopened
@@ -507,9 +507,14 @@ class TicketReminder(Component):
             self.log.warn('Caught exception while generating html part',
                           exc_info=True)
             raise
-        if isinstance(content, unicode):
-            # avoid UnicodeEncodeError from MIMEText()
-            content = content.encode('utf-8')
+        try:
+            if isinstance(content, unicode):
+                # avoid UnicodeEncodeError from MIMEText()
+                content = content.encode('utf-8')
+        except NameError:
+            if isinstance(content, str):
+                # avoid UnicodeEncodeError from MIMEText()
+                content = content.encode('utf-8')
         return content
 
     if hasattr(Environment, 'db_query'):
@@ -523,7 +528,7 @@ class TicketReminder(Component):
             return list(cursor)
 
     def _create_request(self):
-        languages = filter(None, [self.config.get('trac', 'default_language')])
+        languages = list(filter(None, [self.config.get('trac', 'default_language')]))
         if languages:
             locale = _parse_locale(languages[0])
         else:
@@ -928,7 +933,8 @@ class TicketReminderCarbonCopySubscriber(Component):
         return "Ticket that I'm listed in the CC field has a reminder"
 
     def default_subscriptions(self):
-        return []
+        klass = self.__class__.__name__
+        return NotificationSystem(self.env).default_subscriptions(klass)
 
     def requires_authentication(self):
         return True
@@ -949,7 +955,8 @@ class TicketReminderTicketReporterSubscriber(Component):
         return "Ticket that I reported has a reminder"
 
     def default_subscriptions(self):
-        return []
+        klass = self.__class__.__name__
+        return NotificationSystem(self.env).default_subscriptions(klass)
 
     def requires_authentication(self):
         return True
@@ -973,7 +980,8 @@ class TicketReminderTicketPreviousUpdatersSubscriber(Component):
         return "Ticket that I previously updated has a reminder"
 
     def default_subscriptions(self):
-        return []
+        klass = self.__class__.__name__
+        return NotificationSystem(self.env).default_subscriptions(klass)
 
     def requires_authentication(self):
         return True
