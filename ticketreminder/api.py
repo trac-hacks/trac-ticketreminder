@@ -2,6 +2,8 @@ import re
 import os.path
 
 from pkg_resources import resource_filename
+import datetime
+import calendar
 
 from trac.core import *
 from trac.config import *
@@ -186,21 +188,24 @@ class TicketReminder(Component):
 
     def _process_add(self, req, ticket):
         if req.method == "POST" and self._validate_add(req):
+            origindatetime = to_datetime(None)
+            origin = to_utimestamp(origindatetime)
+            repeat = 0
             if req.args.get('reminder_type') == 'interval':
-                time = clear_time(to_datetime(None))
-                delta = _time_intervals[req.args.get('unit')](req.args.get('interval'))
-                time += delta
-                time = to_utimestamp(time)
+                interval_arg = req.args.get('interval')
+                unit_arg = req.args.get('unit')
+                delta = _time_intervals[unit_arg](interval_arg)
+                repeat = int(delta.total_seconds() / datetime.timedelta(days=1).total_seconds())
+                time = self._next_reminder_time(to_utimestamp(clear_time(origindatetime)), repeat, origin)
             else:
                 time = to_utimestamp(parse_date(req.args.get('date')))
-            origin = to_utimestamp(to_datetime(None))
 
             self.env.db_transaction("""
                 INSERT INTO ticketreminder
-                 (ticket, time, author, origin, reminded, description)
-                VALUES (%s, %s, %s, %s, 0, %s)
+                 (ticket, time, author, origin, reminded, repeat, description)
+                VALUES (%s, %s, %s, %s, 0, %s, %s)
                 """, (ticket.id, time, get_reporter_id(req, 'author'),
-                      origin, req.args.get('description')))
+                      origin, repeat, req.args.get('description')))
 
             add_notice(req, "Reminder has been added.")
             req.redirect(get_resource_url(self.env, ticket.resource, req.href) + "#reminders")
@@ -256,7 +261,7 @@ class TicketReminder(Component):
 
         with self.env.db_transaction as db:
             for reminder in db("""
-                    SELECT id, time, author, origin, description
+                    SELECT id, time, author, origin, repeat, description
                     FROM ticketreminder WHERE id=%s
                     """, (reminder_id,)):
                 break
@@ -283,19 +288,36 @@ class TicketReminder(Component):
 
     def _get_reminders(self, ticket_id):
         for row in self.env.db_query("""
-            SELECT id, time, author, origin, description
+            SELECT id, time, author, origin, repeat, description
             FROM ticketreminder
             WHERE ticket=%s AND reminded=0 ORDER BY time
             """, (ticket_id,)):
             yield row
 
-    def _format_reminder(self, req, ticket, id, time, author, origin, description, delete_button=True):
+    def _format_reminder(self, req, ticket, id, time, author, origin, repeat, description, delete_button=True):
         now = to_datetime(None)
         time = to_datetime(time)
         if now >= time:
             when = tag(tag.strong("Right now"), " (pending)")
         else:
-            when = tag("In ", tag.strong(pretty_timedelta(time)), " (", format_date(time), ")")
+            if repeat and repeat > 0:
+                repeatstr = "day"
+                repeatval = repeat
+                if repeat % 365 == 0:
+                    repeatval = int(repeat // 365)
+                    repeatstr = "year" if repeat == 365 else str(repeatval) + " years"
+                elif repeat % 30 == 0:
+                    repeatval = int(repeat // 30)
+                    repeatstr = "month" if repeat == 30 else str(repeatval) + " months"
+                elif repeat % 7 == 0:
+                    repeatval = int(repeat // 7)
+                    repeatstr = "week" if repeat == 7 else str(repeatval) + " weeks"
+                elif repeat != 1:
+                    repeatstr = str(repeatval) + " days"
+
+                when = tag("In ", tag.strong(pretty_timedelta(time)), " (", format_date(time), ")", " every ", repeatstr)
+            else:
+                when = tag("In ", tag.strong(pretty_timedelta(time)), " (", format_date(time), ")")
 
         if description:
             context = web_context(req, ticket.resource)
@@ -305,7 +327,7 @@ class TicketReminder(Component):
 
         return tag(self._reminder_delete_form(req, id) if delete_button else None, when, " - added by ", tag.em(Chrome(self.env).authorinfo(req, author)), " ", tag.span(pretty_timedelta(origin), title=format_datetime(origin, req.session.get('datefmt', 'iso8601'), req.tz)), " ago.", desc)
 
-    def _format_reminder_text(self, ticket, id, author, origin, description):
+    def _format_reminder_text(self, ticket, id, author, origin, repeat, description):
         return "Ticket reminder added by %s %s ago (%s)%s" % (author, pretty_timedelta(origin), format_datetime(origin), ":\n%s" % (description,) if description else ".")
 
     def _reminder_tags(self, req, data):
@@ -414,16 +436,55 @@ class TicketReminder(Component):
     def _do_check_and_send(self):
         now = to_utimestamp(to_datetime(None))
         for row in self.env.db_query("""
-                SELECT id, ticket, author, origin, description FROM ticketreminder WHERE reminded=0 AND %s>=time
+                SELECT id, ticket, time, author, origin, repeat, description FROM ticketreminder WHERE reminded=0 AND %s>=time
                     """, (now,)):
             self._do_send(*row)
 
-    def _do_send(self, id, ticket, author, origin, description):
+    @staticmethod
+    def _add_months(startdatetime, months, origindatetime):
+        months_sum = startdatetime.month - 1 + months
+
+        # Calculate the year
+        year = startdatetime.year + int(months_sum // 12)
+
+        # Calculate the month
+        month = (months_sum % 12) + 1
+
+        # Calculate the day
+        day = origindatetime.day
+        last_day_of_month = calendar.monthrange(year, month)[1]
+        if day > last_day_of_month:
+            day = last_day_of_month
+
+        new_datetime = datetime.datetime(year, month, day, 
+                                         startdatetime.hour, 
+                                         startdatetime.minute, 
+                                         startdatetime.second, 
+                                         tzinfo=startdatetime.tzinfo)
+        return new_datetime
+
+    @staticmethod
+    def _next_reminder_time(time, repeat, origin):
+        if repeat and repeat > 0:
+            if repeat % 365 == 0:
+                repeatval = int(repeat // 365)
+                next_time = to_datetime(time)
+                next_time = next_time.replace(year = next_time.year + repeatval)
+            elif repeat % 30 == 0:
+                repeatval = int(repeat // 30)
+                next_time = TicketReminder._add_months(to_datetime(time), repeatval, to_datetime(origin))
+            else:
+                next_time = to_datetime(time) + datetime.timedelta(days=repeat)
+        else:
+            next_time = to_datetime(time)
+        return to_utimestamp(next_time)
+
+    def _do_send(self, id, ticket, time, author, origin, repeat, description):
         ticket = Ticket(self.env, ticket)
         try:
             # We send reminder only for open tickets
             if ticket['status'] != 'closed':
-                reminder = self._format_reminder_text(ticket, id, author, origin, description)
+                reminder = self._format_reminder_text(ticket, id, author, origin, repeat, description)
                 now = datetime_now(utc)
                 event = TicketReminderEvent('reminder', ticket, now, author, reminder)
                 notifier = NotificationSystem(self.env)
@@ -432,11 +493,17 @@ class TicketReminder(Component):
             self.env.log.error("Failure sending reminder notification for ticket #%s: %s", ticket.id, exception_to_unicode(e))
             print("Failure sending reminder notification for ticket #%s: %s" % (ticket.id, exception_to_unicode(e)))
         else:
-            # We set flag anyway as even for closed tickets this notification
-            # would be obsolete if ticket would be reopened
-            self.env.db_transaction("""
-                UPDATE ticketreminder SET reminded=1 WHERE id=%s
-                """, (id,))
+            if repeat and repeat > 0:
+                time = self._next_reminder_time(time, repeat, origin)
+                self.env.db_transaction("""
+                    UPDATE ticketreminder SET time=%s WHERE id=%s
+                    """, (time,id))
+            else:
+                # We set flag anyway as even for closed tickets this notification
+                # would be obsolete if ticket would be reopened
+                self.env.db_transaction("""
+                    UPDATE ticketreminder SET reminded=1 WHERE id=%s
+                    """, (id,))
 
     # INotificationFormatter methods
 
