@@ -169,7 +169,7 @@ class TicketReminder(Component):
         ticket = Ticket(self.env, id)
 
         if 'cancel' in req.args:
-            req.redirect(get_resource_url(self.env, ticket.resource, req.href))
+            req.redirect(get_resource_url(self.env, ticket.resource, req.href) + "#reminders")
 
         ticket_name = get_resource_name(self.env, ticket.resource)
         ticket_url = get_resource_url(self.env, ticket.resource, req.href)
