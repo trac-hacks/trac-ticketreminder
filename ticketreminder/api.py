@@ -1,5 +1,6 @@
 import re
 import os.path
+from io import open
 
 from pkg_resources import resource_filename
 import datetime
@@ -658,7 +659,7 @@ class TicketReminder(Component):
                 url_re = re.compile(r'\burl\([^\]]*\)')
                 buf = ['#content > hr { display: none }']
                 for name in ('trac.css', 'ticket.css'):
-                    f = open(os.path.join(dir, 'css', name))
+                    f = open(os.path.join(dir, 'css', name), encoding='utf-8')
                     try:
                         lines = f.read().splitlines()
                     finally:
@@ -677,7 +678,7 @@ class TicketReminder(Component):
                 url_re = re.compile(r'\burl\([^\]]*\)')
                 buf = ['#content > hr { display: none }']
                 for name in ('trac.css', 'ticket.css'):
-                    f = open(os.path.join(dir, 'css', name))
+                    f = open(os.path.join(dir, 'css', name), encoding='utf-8')
                     try:
                         lines = f.read().splitlines()
                     finally:
