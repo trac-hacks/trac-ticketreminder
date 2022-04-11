@@ -651,44 +651,34 @@ class TicketReminder(Component):
                                           {'iterable': False})
 
     def _get_styles(self, chrome):
-        # Added search for 'shared' to get configured css
+        ok_prefixes = ('shared', 'common')
+        ok_dirs = {}
         for provider in chrome.template_providers:
             for prefix, dir in provider.get_htdocs_dirs():
-                if prefix != 'shared':
-                    continue
-                url_re = re.compile(r'\burl\([^\]]*\)')
-                buf = ['#content > hr { display: none }']
-                for name in ('trac.css', 'ticket.css'):
-                    f = open(os.path.join(dir, 'css', name), encoding='utf-8')
-                    try:
-                        lines = f.read().splitlines()
-                    finally:
-                        f.close()
-                    buf.extend(url_re.sub('none', to_unicode(line))
-                               for line in lines
-                               if not line.startswith('@import'))
-                return ('/*<![CDATA[*/\n' +
-                        '\n'.join(buf).replace(']]>', ']]]]><![CDATA[>') +
-                        '\n/*]]>*/')
+                if prefix in ok_prefixes:
+                    ok_dirs[prefix] = dir
 
-        for provider in chrome.template_providers:
-            for prefix, dir in provider.get_htdocs_dirs():
-                if prefix != 'common':
+        # Try "shared" provider first to use any custom formatting.
+        for prefix in ok_prefixes:
+            if prefix in ok_dirs:
+                try:
+                    url_re = re.compile(r'\burl\([^\]]*\)')
+                    buf = ['#content > hr { display: none }']
+                    for name in ('trac.css', 'ticket.css'):
+                        f = open(os.path.join(ok_dirs[prefix], 'css', name), 
+                                 encoding='utf-8')
+                        try:
+                            lines = f.read().splitlines()
+                        finally:
+                            f.close()
+                        buf.extend(url_re.sub('none', to_unicode(line))
+                                   for line in lines
+                                   if not line.startswith('@import'))
+                    return ('/*<![CDATA[*/\n' +
+                            '\n'.join(buf).replace(']]>', ']]]]><![CDATA[>') +
+                            '\n/*]]>*/')
+                except FileNotFoundError:
                     continue
-                url_re = re.compile(r'\burl\([^\]]*\)')
-                buf = ['#content > hr { display: none }']
-                for name in ('trac.css', 'ticket.css'):
-                    f = open(os.path.join(dir, 'css', name), encoding='utf-8')
-                    try:
-                        lines = f.read().splitlines()
-                    finally:
-                        f.close()
-                    buf.extend(url_re.sub('none', to_unicode(line))
-                               for line in lines
-                               if not line.startswith('@import'))
-                return ('/*<![CDATA[*/\n' +
-                        '\n'.join(buf).replace(']]>', ']]]]><![CDATA[>') +
-                        '\n/*]]>*/')
         return ''
 
     def _format_plaintext(self, event):
