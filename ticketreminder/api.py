@@ -1,4 +1,5 @@
 import re
+import sys
 import os.path
 from io import open
 
@@ -490,9 +491,13 @@ class TicketReminder(Component):
                 event = TicketReminderEvent('reminder', ticket, now, author, reminder)
                 notifier = NotificationSystem(self.env)
                 notifier.notify(event)
-        except Exception as e:
-            self.env.log.error("Failure sending reminder notification for ticket #%s: %s", ticket.id, exception_to_unicode(e))
-            print("Failure sending reminder notification for ticket #%s: %s" % (ticket.id, exception_to_unicode(e)))
+        except Exception:
+            try:
+                e = sys.exc_info()[1]
+                self.env.log.error("Failure sending reminder notification for ticket #%s: %s", ticket.id, exception_to_unicode(e))
+                print("Failure sending reminder notification for ticket #%s: %s" % (ticket.id, exception_to_unicode(e)))
+            finally:
+                pass
         else:
             if repeat and repeat > 0:
                 time = self._next_reminder_time(time, repeat, origin)
