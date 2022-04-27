@@ -1,6 +1,8 @@
+#!/usr/bin/env python
+
 from setuptools import setup
 
-VERSION = '0.2.1'
+VERSION = '0.2.2'
 PACKAGE = 'ticketreminder'
 
 setup(
@@ -21,7 +23,19 @@ setup(
             'templates/*.html',
         ],
     },
-    install_requires = [],
+    install_requires = ['Trac'],
+    classifiers=[
+        'Development Status :: 4 - Beta',
+        'Environment :: Plugins',
+        'Environment :: Web Environment',
+        'Framework :: Trac',
+        'License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)'
+        'Natural Language :: English',
+        'Operating System :: OS Independent',
+        'Programming Language :: Python :: 2',
+        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
+    ],
     zip_safe = False,
     entry_points = {
         'trac.plugins': '%s = %s' % (PACKAGE, PACKAGE),

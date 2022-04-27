@@ -1,0 +1,8 @@
+${reminder}
+
+${ticket_body_hdr}
+${ticket_props}
+${'-- '}
+${_('Ticket URL: <%(link)s>', link=ticket.link)}
+${project.name} <${project.url or abs_href()}>
+${project.descr}

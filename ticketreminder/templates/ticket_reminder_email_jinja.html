@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <base href="${abs_href.ticket(ticket.id)}" />
+    <title>#${ticket.id} (${ticket.summary})</title>
+    <style type="text/css">${styles|safe}</style>
+  </head>
+  <body>
+    <div id="reminder">
+        <pre>
+${reminder}
+        </pre>
+    </div>
+    <div id="main">
+      <div id="content" class="ticket">
+        <h1 id="trac-ticket-title">
+          <a href="${abs_href.ticket(ticket.id)}">Ticket #${ticket.id}</a>
+          <span class="trac-status">${ticket.status}</span>
+          # if ticket.type:
+          <span class="trac-type">${ticket.type}</span>
+          # endif
+          # if ticket.resolution:
+          <span class="trac-resolution">${ticket.resolution}</span>
+          # endif
+        </h1>
+        <hr />
+        # with preview_mode = change_preview.fields
+        #   include 'ticket_box.html'
+        # endwith
+      </div>
+    </div>
+    <div id="footer">
+      <hr />
+      <p>
+        ${tag_('Ticket URL: \x3c%(link)s\x3e', link=link)}<br />
+        ${project.name} &lt;<a href="${project.url or abs_href()}">${project.url or abs_href()}</a>&gt;<br />
+        ${project.descr}
+      </p>
+    </div>
+  </body>
+</html>
